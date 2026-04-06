@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 MS_REPO = "https://github.com/microsoft/skills.git"
 REPO_ROOT = Path(__file__).parent.parent
@@ -79,6 +79,17 @@ def is_path_within(base_dir: Path, target_path: Path) -> bool:
         return False
 
 
+def is_safe_regular_file(file_path: Path, source_root: Path) -> bool:
+    try:
+        if file_path.is_symlink():
+            return False
+        if not file_path.is_file():
+            return False
+        return is_path_within(source_root, file_path.resolve())
+    except OSError:
+        return False
+
+
 def sanitize_flat_name(candidate: str | None, fallback: str) -> str:
     """Accept only flat skill directory names; fall back on unsafe values."""
     if not candidate:
@@ -102,14 +113,9 @@ def sanitize_flat_name(candidate: str | None, fallback: str) -> str:
 def copy_safe_skill_files(source_dir: Path, target_dir: Path, source_root: Path):
     """Copy regular files only when their resolved path stays inside source_root."""
     for file_item in source_dir.iterdir():
-        if file_item.name == "SKILL.md" or file_item.is_symlink() or not file_item.is_file():
+        if file_item.name == "SKILL.md" or not is_safe_regular_file(file_item, source_root):
             continue
-
-        resolved = file_item.resolve()
-        if not is_path_within(source_root, resolved):
-            continue
-
-        shutil.copy2(resolved, target_dir / file_item.name)
+        shutil.copy2(file_item.resolve(), target_dir / file_item.name)
 
 def extract_skill_name(skill_md_path: Path) -> str | None:
     """Extract the 'name' field from SKILL.md YAML frontmatter using PyYAML."""
@@ -176,7 +182,7 @@ def find_skills_in_directory(source_dir: Path):
             continue
 
         try:
-            relative_path = item.relative_to(skills_source)
+            relative_path = PurePosixPath(item.relative_to(skills_source).as_posix())
         except ValueError:
             continue
 
@@ -201,9 +207,12 @@ def find_plugin_skills(source_dir: Path, already_synced_names: set):
         skill_dir = skill_file.parent
         skill_name = skill_dir.name
 
+        if not is_safe_regular_file(skill_file, source_dir):
+            continue
+
         if skill_name not in already_synced_names:
             results.append({
-                "relative_path": Path("plugins") / skill_name,
+                "relative_path": PurePosixPath("plugins") / skill_name,
                 "skill_md": skill_file,
                 "source_dir": skill_dir,
             })
@@ -220,13 +229,17 @@ def find_github_skills(source_dir: Path, already_synced_names: set):
         return results
 
     for skill_dir in github_skills.iterdir():
-        if not skill_dir.is_dir() or not (skill_dir / "SKILL.md").exists():
+        if skill_dir.is_symlink() or not skill_dir.is_dir():
+            continue
+
+        skill_md = skill_dir / "SKILL.md"
+        if not is_safe_regular_file(skill_md, source_dir):
             continue
 
         if skill_dir.name not in already_synced_names:
             results.append({
-                "relative_path": Path(".github/skills") / skill_dir.name,
-                "skill_md": skill_dir / "SKILL.md",
+                "relative_path": PurePosixPath(".github/skills") / skill_dir.name,
+                "skill_md": skill_md,
                 "source_dir": skill_dir,
             })
 

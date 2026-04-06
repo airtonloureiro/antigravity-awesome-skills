@@ -35,6 +35,8 @@ WHEN_TO_USE_PATTERNS = [
     re.compile(r"^##\s+Use\s+this\s+skill\s+when", re.MULTILINE | re.IGNORECASE),
     re.compile(r"^##\s+When\s+to\s+Use\s+This\s+Skill", re.MULTILINE | re.IGNORECASE),
 ]
+SOURCE_REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+VALID_SOURCE_TYPES = {"official", "community", "self"}
 
 def has_when_to_use_section(content):
     return any(pattern.search(content) for pattern in WHEN_TO_USE_PATTERNS)
@@ -53,7 +55,7 @@ def parse_frontmatter(content, rel_path=None):
     Parse frontmatter using PyYAML for robustness.
     Returns a dict of key-values and a list of error messages.
     """
-    fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    fm_match = re.search(r'^---\s*\n(.*?)\n?---(?:\s*\n|$)', content, re.DOTALL)
     if not fm_match:
         return None, ["Missing or malformed YAML frontmatter"]
     
@@ -77,16 +79,11 @@ def parse_frontmatter(content, rel_path=None):
     except yaml.YAMLError as e:
         return None, [f"YAML Syntax Error: {e}"]
 
-def validate_skills(skills_dir, strict_mode=False):
-    configure_utf8_output()
-
-    print(f"🔍 Validating skills in: {skills_dir}")
-    print(f"⚙️  Mode: {'STRICT (CI)' if strict_mode else 'Standard (Dev)'}")
-    
+def collect_validation_results(skills_dir, strict_mode=False):
     errors = []
     warnings = []
     skill_count = 0
-    
+
     # Pre-compiled regex
     security_disclaimer_pattern = re.compile(r"AUTHORIZED USE ONLY", re.IGNORECASE)
 
@@ -114,7 +111,7 @@ def validate_skills(skills_dir, strict_mode=False):
             
             # 1. Frontmatter Check
             metadata, fm_errors = parse_frontmatter(content, rel_path)
-            if not metadata:
+            if metadata is None:
                 errors.append(f"❌ {rel_path}: Missing or malformed YAML frontmatter")
                 continue # Cannot proceed without metadata
             
@@ -152,6 +149,20 @@ def validate_skills(skills_dir, strict_mode=False):
                 if strict_mode: errors.append(msg.replace("⚠️", "❌"))
                 else: warnings.append(msg)
 
+            source_repo = metadata.get("source_repo")
+            if source_repo is not None:
+                if not isinstance(source_repo, str) or not SOURCE_REPO_PATTERN.fullmatch(source_repo.strip()):
+                    errors.append(
+                        f"❌ {rel_path}: Invalid 'source_repo' format. Must be OWNER/REPO, got '{source_repo}'"
+                    )
+
+            source_type = metadata.get("source_type")
+            if source_type is not None:
+                if not isinstance(source_type, str) or source_type not in VALID_SOURCE_TYPES:
+                    errors.append(
+                        f"❌ {rel_path}: Invalid 'source_type' value. Must be one of {sorted(VALID_SOURCE_TYPES)}"
+                    )
+
             # Date Added Validation (optional field)
             if "date_added" in metadata:
                 if not date_pattern.match(metadata["date_added"]):
@@ -187,6 +198,25 @@ def validate_skills(skills_dir, strict_mode=False):
                 target_path = os.path.normpath(os.path.join(root, link_clean))
                 if not os.path.exists(target_path):
                     errors.append(f"❌ {rel_path}: Dangling link detected. Path '{link_clean}' (from '...({link})') does not exist locally.")
+
+    return {
+        "skill_count": skill_count,
+        "warnings": warnings,
+        "errors": errors,
+        "strict_mode": strict_mode,
+    }
+
+
+def validate_skills(skills_dir, strict_mode=False):
+    configure_utf8_output()
+
+    print(f"🔍 Validating skills in: {skills_dir}")
+    print(f"⚙️  Mode: {'STRICT (CI)' if strict_mode else 'Standard (Dev)'}")
+
+    results = collect_validation_results(skills_dir, strict_mode=strict_mode)
+    warnings = results["warnings"]
+    errors = results["errors"]
+    skill_count = results["skill_count"]
 
     # Reporting
     print(f"\n📊 Checked {skill_count} skills.")

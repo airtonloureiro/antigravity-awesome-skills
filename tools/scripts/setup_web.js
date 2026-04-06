@@ -1,11 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
+const fs = require('fs');
+const path = require('path');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
 const { findProjectRoot } = require('../lib/project-root');
 const { resolveSafeRealPath } = require('../lib/symlink-safety');
 
@@ -40,6 +35,14 @@ function copyFolderSync(from, to, rootDir = from) {
     });
 }
 
+function copyIndexFiles(sourceIndex, destIndex, destBackupIndex) {
+    console.log(`Copying ${sourceIndex} -> ${destIndex}...`);
+    fs.copyFileSync(sourceIndex, destIndex);
+
+    console.log(`Copying ${sourceIndex} -> ${destBackupIndex}...`);
+    fs.copyFileSync(sourceIndex, destBackupIndex);
+}
+
 function main() {
     if (!fs.existsSync(WEB_APP_PUBLIC)) {
         fs.mkdirSync(WEB_APP_PUBLIC, { recursive: true });
@@ -47,8 +50,8 @@ function main() {
 
     const sourceIndex = path.join(ROOT_DIR, 'skills_index.json');
     const destIndex = path.join(WEB_APP_PUBLIC, 'skills.json');
-    console.log(`Copying ${sourceIndex} -> ${destIndex}...`);
-    fs.copyFileSync(sourceIndex, destIndex);
+    const destBackupIndex = path.join(WEB_APP_PUBLIC, 'skills.json.backup');
+    copyIndexFiles(sourceIndex, destIndex, destBackupIndex);
 
     const sourceSkills = path.join(ROOT_DIR, 'skills');
     const destSkills = path.join(WEB_APP_PUBLIC, 'skills');
@@ -65,8 +68,8 @@ function main() {
     console.log('✅ Web app assets setup complete!');
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (require.main === module) {
     main();
 }
 
-export { copyFolderSync, main };
+module.exports = { copyFolderSync, copyIndexFiles, main };

@@ -1,6 +1,8 @@
 ---
 name: analyze-project
 description: Forensic root cause analyzer for Antigravity sessions. Classifies scope deltas, rework patterns, root causes, hotspots, and auto-improves prompts/health.
+risk: unknown
+source: community
 version: "1.0"
 tags: [analysis, diagnostics, meta, root-cause, project-health, session-review]
 ---
@@ -23,6 +25,12 @@ For each session, determine:
 3. Whether the opening prompt was sufficient
 4. Which files/subsystems repeatedly correlate with struggle
 5. What changes would most improve future sessions
+
+## When to Use
+
+- You need a postmortem on AI-assisted coding sessions, especially when scope drift or repeated rework occurred.
+- You want root-cause analysis that separates user/spec issues from agent mistakes, repo friction, or validation gaps.
+- You need evidence-backed recommendations for improving future prompts, repo health, or delivery workflows.
 
 ## Global Rules
 
